@@ -92,9 +92,10 @@ def simulate_imu(ref, spec="industrial", seed=0):
 
     gb_sta = e["gb_sta"] * rng.choice([-1.0, 1.0], 3)
     ab_sta = e["ab_sta"] * rng.choice([-1.0, 1.0], 3)
-    wb = (true.wb + gb_sta + gauss_markov(N, e["gb_dyn"], e["gb_corr"], dt, rng)
-          + e["arw"] * np.sqrt(fs) * rng.normal(size=(N, 3)))
-    fb = (true.fb + ab_sta + gauss_markov(N, e["ab_dyn"], e["ab_corr"], dt, rng)
-          + e["vrw"] * np.sqrt(fs) * rng.normal(size=(N, 3)))
+    gb_true = gb_sta + gauss_markov(N, e["gb_dyn"], e["gb_corr"], dt, rng)
+    ab_true = ab_sta + gauss_markov(N, e["ab_dyn"], e["ab_corr"], dt, rng)
+    wb = true.wb + gb_true + e["arw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
+    fb = true.fb + ab_true + e["vrw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
     e["gb_sta_vec"], e["ab_sta_vec"] = gb_sta, ab_sta
+    e["gb_true"], e["ab_true"] = gb_true, ab_true      # total bias time series (sensor frame)
     return ImuData(ref.t.copy(), wb, fb, e), true

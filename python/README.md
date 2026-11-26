@@ -86,3 +86,5 @@ Từ kế gắn cùng IMU nên quay theo IMU. Bộ lọc dùng cả vector từ 
 | Quay Z | IMU + Từ kế | 2215.2 | 2215.2 | 952.2 | 246.1 | 126.46 | 64.99 | 0.080 / 0.064 / 0.072 |
 | Cố định | Chỉ IMU | 14213.3 | 14213.3 | 5649.6 | 1579.3 | 567.27 | 257.05 | 0.845 / 0.541 / 0.934 |
 | Cố định | IMU + Từ kế | 2769.2 | 2791.3 | 1344.2 | 307.7 | 313.21 | 137.56 | 0.161 / 0.103 / 0.110 |
+
+> Các bảng ở trên là một lần chạy với phiên bản bộ sinh số ngẫu nhiên cũ. Kết quả Monte Carlo cập nhật, lý thuyết và hình ảnh nằm trong tài liệu học tập `docs/index.html` (dựng bằng `docs/make_figures.py`, `docs/monte_carlo.py`, `docs/build_doc.py`).
