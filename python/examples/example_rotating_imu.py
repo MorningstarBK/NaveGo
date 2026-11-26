@@ -1,9 +1,9 @@
-"""Rotating IMU about the vehicle X axis + encoder, INS aided by baro; GNSS lost after 60 s.
+"""Rotating IMU about the vehicle X, Y or Z axis + encoder, INS aided by baro; GNSS lost after 60 s.
 
 Run from python/:  python examples/example_rotating_imu.py [--imu industrial] [--rate 36]
 GNSS is available only during the first `--gnss-until` seconds (initial calibration), then it is
-lost until the end. Compared: IMU only (pure INS after GNSS loss) vs IMU + baro, for a rotating
-IMU and, as a reference, a fixed (strapped-down, non-rotating) IMU.
+lost until the end. Compared: IMU only (pure INS after GNSS loss) vs IMU + baro, for an IMU rotating
+about each selected vehicle axis and, as a reference, a fixed (non-rotating) IMU.
 Vehicle roll/pitch/yaw are computed from the INS sensor attitude and the encoder angle.
 """
 import argparse
@@ -29,6 +29,7 @@ def main():
     ap.add_argument("--gnss-until", type=float, default=60.0)
     ap.add_argument("--rate", type=float, default=36.0, help="turntable rate (deg/s)")
     ap.add_argument("--mode", default="continuous", choices=["continuous", "alternate"])
+    ap.add_argument("--axes", default="xyz", help="rotation axes to simulate, e.g. xyz or x")
     ap.add_argument("--encoder-bits", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-plot", action="store_true")
@@ -42,18 +43,17 @@ def main():
     gnss = simulate_gnss(ref, outages=[(a.gnss_until + 1e-6, a.duration + 1.0)], seed=2)
     outage = ref.t > a.gnss_until
 
-    mounts = {
-        "Rotating": (rotate_trajectory(ref, theta), enc.theta),
-        "Fixed": (ref, np.zeros_like(ref.t)),
-    }
+    mounts = {f"Rot. {ax.upper()}": (rotate_trajectory(ref, theta, ax), enc.theta, ax)
+              for ax in a.axes.lower()}
+    mounts["Fixed"] = (ref, np.zeros_like(ref.t), "x")
     rows, curves = [], {}
-    for mount, (sref, th) in mounts.items():
+    for mount, (sref, th, ax) in mounts.items():
         imu, _ = simulate_imu(sref, a.imu, seed=a.seed)            # same error seed for both
         init = initial_state(sref)
         for aid, kw in (("IMU only", {}), ("IMU + Baro", dict(baro=baro))):
             res = run_fusion(imu, init, gnss=gnss, **kw)
             err = nav_errors(res, ref)                              # position/velocity
-            att = wrap_angle(vehicle_attitude(res.euler, th) - ref.euler)
+            att = wrap_angle(vehicle_attitude(res.euler, th, ax) - ref.euler)
             hz = err["horizontal"]
             rows.append(dict(
                 mount=mount, aid=aid,
@@ -64,7 +64,7 @@ def main():
             curves[f"{mount} / {aid}"] = (err, att)
 
     print(f"IMU {a.imu}, {a.duration:.0f} s, GNSS lost from t = {a.gnss_until:.0f} s to the end, "
-          f"turntable {a.mode} {a.rate:.0f} deg/s about X, encoder {a.encoder_bits} bit")
+          f"turntable {a.mode} {a.rate:.0f} deg/s about axes {a.axes.upper()}, encoder {a.encoder_bits} bit")
     hdr = (f"| {'IMU mount':<9}| {'Aiding':<11}| {'Hor. drift end (m)':>18} | {'Hor. max (m)':>12} "
            f"| {'Hor. RMSE (m)':>13} | {'Hor. drift (m/min)':>18} | {'Alt. err end (m)':>16} "
            f"| {'Alt. RMSE (m)':>13} | {'Roll/Pitch/Yaw RMSE (deg)':>27} |")
@@ -84,13 +84,13 @@ def main():
 
     fig, ax = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
     for name, (err, att) in curves.items():
-        ls = "-" if name.startswith("Rotating") else "--"
+        ls = "-" if name.endswith("Baro") else "--"
         ax[0].plot(ref.t, err["horizontal"], ls, label=name)
         ax[1].plot(ref.t, err["h"], ls, label=name)
-        if name.startswith("Rotating"):
-            ax[2].plot(ref.t, np.rad2deg(att[:, 2]), ls, label=name + " yaw")
-            ax[2].plot(ref.t, np.rad2deg(att[:, 0]), ":", label=name + " roll")
+        if name.endswith("Baro"):
+            ax[2].plot(ref.t, np.rad2deg(att[:, 2]), label=name + " yaw")
     ax[0].set_ylabel("horizontal error (m)")
+    ax[0].set_yscale("log")
     ax[1].set_ylabel("altitude error (m)")
     ax[1].set_yscale("symlog", linthresh=10)
     ax[2].set_ylabel("vehicle attitude err (deg)")
@@ -102,7 +102,7 @@ def main():
         x.grid(True, alpha=0.3)
     for x in ax[:3]:
         x.legend(fontsize=7, loc="upper left")
-    fig.suptitle(f"Rotating IMU about X + encoder, {a.imu} IMU (shaded: no GNSS)")
+    fig.suptitle(f"Rotating IMU + encoder, {a.imu} IMU (shaded: no GNSS)")
     fig.tight_layout()
     fig.savefig(a.out, dpi=120)
     print("saved", a.out)

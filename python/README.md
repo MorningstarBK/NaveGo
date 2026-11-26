@@ -49,20 +49,24 @@ INS+GNSS+Baro        0.74        0.60      10.41         22.91
 
 Giấy phép: LGPL v3, giống NaveGo.
 
-## IMU quay quanh trục X + encoder (rotation modulation)
+## IMU quay quanh trục X / Y / Z + encoder (rotation modulation)
 
-`sim/rotation.py` mô phỏng IMU gắn trên bàn xoay có trục quay trùng trục X của xe. Có hai chế độ quay: quay liên tục, hoặc quay đảo chiều ±360° (`--mode alternate`). Encoder đo góc quay θ (lượng tử hóa 16 bit, có nhiễu). INS/EKF ước lượng tư thế của khung cảm biến `C_ns`, sau đó góc roll/pitch/yaw của xe được tính bằng `C_nb = C_ns · Rx(θ_enc)ᵀ`.
+`sim/rotation.py` mô phỏng IMU gắn trên bàn xoay, với trục quay trùng trục X, Y hoặc Z của xe. Có hai chế độ quay: quay liên tục, hoặc quay đảo chiều ±360° (`--mode alternate`). Encoder đo góc quay θ (lượng tử hóa 16 bit, có nhiễu). INS/EKF ước lượng tư thế của khung cảm biến `C_ns`, sau đó góc roll/pitch/yaw của xe được tính bằng `C_nb = C_ns · R_trục(θ_enc)ᵀ`.
 
 ```bash
-python examples/example_rotating_imu.py            # GNSS mất từ 60 s đến hết quỹ đạo
-python examples/example_rotating_imu.py --imu consumer --rate 60 --mode alternate
+python examples/example_rotating_imu.py                 # quay quanh X, Y, Z + IMU cố định; GNSS mất từ 60 s
+python examples/example_rotating_imu.py --axes z --imu consumer --rate 60 --mode alternate
 ```
 
 Kết quả mẫu (IMU `industrial`, 600 s, chỉ có GNSS trong 60 s đầu; các thống kê tính trong lúc mất GNSS):
 
 | IMU | Hỗ trợ | Trôi ngang cuối (m) | Trôi ngang max (m) | RMSE ngang (m) | Tốc độ trôi ngang (m/phút) | Sai số độ cao cuối (m) | RMSE độ cao (m) | RMSE Roll/Pitch/Yaw (°) |
 |---|---|---|---|---|---|---|---|---|
-| Quay | Chỉ IMU | 7082.6 | 7082.6 | 2815.0 | 787.0 | 80.67 | 27.21 | 0.409 / 0.178 / 0.219 |
-| Quay | IMU + Baro | 417.4 | 684.7 | 303.4 | 46.4 | 0.23 | 0.56 | 0.130 / 0.094 / 0.242 |
+| Quay X | Chỉ IMU | 7082.6 | 7082.6 | 2815.0 | 787.0 | 80.67 | 27.21 | 0.409 / 0.178 / 0.219 |
+| Quay X | IMU + Baro | 417.4 | 684.7 | 303.4 | 46.4 | 0.23 | 0.56 | 0.130 / 0.094 / 0.242 |
+| Quay Y | Chỉ IMU | 9641.4 | 9641.4 | 3862.9 | 1071.3 | -201.18 | 73.43 | 0.278 / 0.528 / 0.262 |
+| Quay Y | IMU + Baro | 737.0 | 820.7 | 346.7 | 81.9 | 0.15 | 0.55 | 0.155 / 0.143 / 0.352 |
+| Quay Z | Chỉ IMU | 2371.8 | 2371.8 | 1039.4 | 263.5 | 124.27 | 64.20 | 0.074 / 0.075 / 0.712 |
+| Quay Z | IMU + Baro | 1614.8 | 1615.7 | 747.8 | 179.4 | 0.45 | 0.63 | 0.052 / 0.070 / 0.686 |
 | Cố định | Chỉ IMU | 14213.3 | 14213.3 | 5649.6 | 1579.3 | 567.27 | 257.05 | 0.845 / 0.541 / 0.934 |
 | Cố định | IMU + Baro | 2872.4 | 2876.8 | 1314.2 | 319.2 | 0.47 | 0.64 | 0.272 / 0.237 / 0.957 |

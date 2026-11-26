@@ -8,8 +8,8 @@ __all__ = [
     "simulate_imu", "true_imu_from_trajectory", "BARO_PRESET", "SensorData",
     "simulate_baro", "simulate_gnss",
 ]
-from .rotation import (EncoderData, rot_x, rotate_trajectory, rotation_angle,  # noqa: E402
+from .rotation import (EncoderData, rot_axis, rot_x, rot_y, rot_z, rotate_trajectory, rotation_angle,  # noqa: E402
                        simulate_encoder, vehicle_attitude)
 
-__all__ += ["EncoderData", "rot_x", "rotate_trajectory", "rotation_angle", "simulate_encoder",
+__all__ += ["EncoderData", "rot_axis", "rot_x", "rot_y", "rot_z", "rotate_trajectory", "rotation_angle", "simulate_encoder",
             "vehicle_attitude"]
