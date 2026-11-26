@@ -77,3 +77,15 @@ def test_encoder_recovers_vehicle_attitude(ref, axis):
     enc = simulate_encoder(ref.t, theta)
     att = vehicle_attitude(np.array([dcm2euler(s.C_nb)]), enc.theta[-1:], axis)
     assert np.all(np.abs(wrap_angle(att[0] - ref.euler[-1])) < np.deg2rad(0.01))
+
+
+def test_mag_bounds_heading(ref):
+    from pynavego.attitude import wrap_angle
+    from pynavego.sim import simulate_mag
+    imu, _ = simulate_imu(ref, "consumer", seed=0)
+    gnss = simulate_gnss(ref, outages=[(30.0, 1e9)], seed=2)
+    init = initial_state(ref)
+    yaw = lambda r: rmse(nav_errors(r, ref)["att"][3000:, 2])
+    y_ins = yaw(run_fusion(imu, init, gnss=gnss))
+    y_mag = yaw(run_fusion(imu, init, gnss=gnss, mag=simulate_mag(ref)))
+    assert y_mag < np.deg2rad(1.0) and y_mag < y_ins

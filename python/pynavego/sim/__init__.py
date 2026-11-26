@@ -13,3 +13,6 @@ from .rotation import (EncoderData, rot_axis, rot_x, rot_y, rot_z, rotate_trajec
 
 __all__ += ["EncoderData", "rot_axis", "rot_x", "rot_y", "rot_z", "rotate_trajectory", "rotation_angle", "simulate_encoder",
             "vehicle_attitude"]
+from .mag import MAG_PRESET, earth_field_ned, simulate_mag  # noqa: E402
+
+__all__ += ["MAG_PRESET", "earth_field_ned", "simulate_mag"]

@@ -49,4 +49,4 @@ Branches: `master` = stable releases, `develop` = integration branch for new fea
 
 ## Python port (`python/`)
 
-`python/pynavego` is a standalone Python package (numpy only; matplotlib for plots) that re-implements INS mechanization, IMU/GNSS simulation and a 16-state error-state EKF, adding barometric-altitude aiding with a baro-bias state. Run `cd python && pytest -q` and `python examples/example_ins_baro.py`. The IMU generator (`sim/imu.py: true_imu_from_trajectory`) exactly inverts `ins.py: ins_step`, so if you change the mechanization discretization, change both (the perfect-IMU test enforces this).
+`python/pynavego` is a standalone Python package (numpy only; matplotlib for plots) that re-implements INS mechanization, IMU/GNSS simulation and a 19-state error-state EKF (16 + 3 magnetometer bias), adding barometric-altitude aiding with a baro-bias state and 3-axis magnetometer vector aiding. Run `cd python && pytest -q` and `python examples/example_ins_baro.py`. The IMU generator (`sim/imu.py: true_imu_from_trajectory`) exactly inverts `ins.py: ins_step`, so if you change the mechanization discretization, change both (the perfect-IMU test enforces this).

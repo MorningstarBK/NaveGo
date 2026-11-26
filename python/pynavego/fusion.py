@@ -3,13 +3,16 @@
 Mirrors the structure of NaveGo ins-gnss/ins_gnss.m (closed-loop error-state filter run
 at IMU rate, corrections fed back to the INS), extended with a barometer bias state.
 
-Error state (16):
+Error state (19):
     0:3   phi   attitude error in NED  (C_est = (I - [phi x]) C_true)
     3:6   dv    velocity error NED     (est - true)
     6:9   dp    position error NED (m) (est - true)
     9:12  dgb   residual gyro bias     (true - estimated)
     12:15 dab   residual accel bias
     15    dbb   residual baro bias
+    16:19 dbm   residual magnetometer (hard-iron) bias, sensor frame
+Magnetometer aiding uses the full field vector: z = C_ns^T m_n + bm_hat - m_meas
+= -C^T [m_n x] phi - dbm  (bounds heading/tilt error about axes not parallel to m_n).
 Without aiding the vertical channel diverges (dvD_dot = 2g/R dpD); the barometer bounds it.
 """
 from dataclasses import dataclass
@@ -20,7 +23,7 @@ from .attitude import dcm2euler, orthonormalize, skew
 from .earth import A, earth_rate, gravity_magnitude, radius, transport_rate
 from .ins import NavState, ins_step
 
-NX = 16
+NX = 19
 
 
 @dataclass
@@ -30,6 +33,9 @@ class FilterConfig:
     vel0: float = 0.2
     pos0: tuple = (3.0, 3.0, 5.0)
     baro_bias0: float = 5.0
+    mag_bias0: float = 1.0        # uT, residual hard-iron bias after calibration
+    mag_bias_rw: float = 1e-3     # uT/sqrt(s)
+    mag_noise_std: float = None   # uT; None -> sensor params
     # Baro bias model (Gauss-Markov) and measurement noise; None -> taken from sensor params.
     baro_drift_std: float = None
     baro_drift_corr: float = None
@@ -48,6 +54,7 @@ class FusionResult:
     gb: np.ndarray
     ab: np.ndarray
     baro_bias: np.ndarray
+    mag_bias: np.ndarray
     P_diag: np.ndarray
 
 
@@ -67,16 +74,18 @@ def _F_matrix(s, f_n, tau_g, tau_a, tau_b):
     F[9:12, 9:12] = -np.eye(3) / tau_g
     F[12:15, 12:15] = -np.eye(3) / tau_a
     F[15, 15] = -1.0 / tau_b
+    # 16:19 magnetometer bias: random walk (F = 0)
     return F
 
 
-def run_fusion(imu, init, baro=None, gnss=None, cfg=None):
+def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None):
     """Run the filter over all IMU samples.
 
     imu:  sim.ImuData (with .err SI parameters used for tuning)
     init: NavState at imu.t[0]
     baro: SensorData with data['h'] (optional)
     gnss: SensorData with lat/lon/h/vel (optional)
+    mag:  SensorData with data['m'] (N,3) sensor-frame field (uT), params['m_n'] (optional)
     """
     cfg = cfg or FilterConfig()
     e = imu.err
@@ -88,22 +97,23 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None):
     t = imu.t
     N = len(t)
     s = init.copy()
-    gb = np.zeros(3); ab = np.zeros(3); bb = 0.0
+    gb = np.zeros(3); ab = np.zeros(3); bb = 0.0; bm = np.zeros(3)
+    mag_noise = cfg.mag_noise_std or (mag.params["noise_std"] if mag is not None else 0.2)
 
     P = np.diag(np.concatenate((
         np.square(cfg.att0), np.full(3, cfg.vel0**2), np.square(cfg.pos0),
         np.full(3, e["gb_sta"]**2 + e["gb_dyn"]**2),
         np.full(3, e["ab_sta"]**2 + e["ab_dyn"]**2),
-        [cfg.baro_bias0**2])))
+        [cfg.baro_bias0**2], np.full(3, cfg.mag_bias0**2))))
     Qc = np.diag(np.concatenate((
         np.full(3, e["arw"]**2), np.full(3, e["vrw"]**2), np.zeros(3),
         np.full(3, 2 * e["gb_dyn"]**2 / e["gb_corr"]),
         np.full(3, 2 * e["ab_dyn"]**2 / e["ab_corr"]),
-        [2 * baro_drift**2 / tau_b])))
+        [2 * baro_drift**2 / tau_b], np.full(3, cfg.mag_bias_rw**2))))
     I = np.eye(NX)
 
     out = {k: np.zeros((N, 3)) for k in ("vel", "euler", "gb", "ab", "pos")}
-    out_bb = np.zeros(N); out_P = np.zeros((N, NX))
+    out_bm = np.zeros((N, 3)); out_bb = np.zeros(N); out_P = np.zeros((N, NX))
 
     def record(k):
         out["pos"][k] = (s.lat, s.lon, s.h)
@@ -111,10 +121,11 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None):
         out["euler"][k] = dcm2euler(s.C_nb)
         out["gb"][k], out["ab"][k] = gb, ab
         out_bb[k] = bb
+        out_bm[k] = bm
         out_P[k] = np.diag(P)
 
     record(0)
-    jb = jg = 0
+    jb = jg = jm = 0
     for k in range(N - 1):
         dt = t[k + 1] - t[k]
         s, f_n = ins_step(s, imu.wb[k] - gb, imu.fb[k] - ab, dt)
@@ -137,6 +148,19 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None):
                 Hb = np.zeros(NX); Hb[8] = -1.0; Hb[15] = -1.0
                 H_rows.append(Hb); z.append(s.h - (baro.data["h"][jb] - bb)); R.append(baro_noise**2)
                 jb += 1
+
+        if mag is not None:
+            while jm < len(mag.t) and mag.t[jm] < tk - cfg.eps:
+                jm += 1
+            if jm < len(mag.t) and abs(mag.t[jm] - tk) <= cfg.eps:
+                m_n = mag.params["m_n"]
+                Hm = np.zeros((3, NX))
+                Hm[:, 0:3] = -s.C_nb.T @ skew(m_n)
+                Hm[:, 16:19] = -np.eye(3)
+                zm = s.C_nb.T @ m_n + bm - mag.data["m"][jm]
+                for i in range(3):
+                    H_rows.append(Hm[i]); z.append(zm[i]); R.append(mag_noise**2)
+                jm += 1
 
         if gnss is not None:
             while jg < len(gnss.t) and gnss.t[jg] < tk - cfg.eps:
@@ -171,12 +195,13 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None):
             gb = gb + x[9:12]
             ab = ab + x[12:15]
             bb += x[15]
+            bm = bm + x[16:19]
 
         record(k + 1)
 
     pos = out["pos"]
     return FusionResult(t, pos[:, 0], pos[:, 1], pos[:, 2], out["vel"], out["euler"],
-                        out["gb"], out["ab"], out_bb, out_P)
+                        out["gb"], out["ab"], out_bb, out_bm, out_P)
 
 
 def initial_state(ref, att_err_deg=(0.2, 0.2, 1.0), pos_err=(0.0, 0.0, 0.0), k=0):

@@ -1,8 +1,9 @@
-"""Rotating IMU about the vehicle X, Y or Z axis + encoder, INS aided by baro; GNSS lost after 60 s.
+"""Rotating IMU about the vehicle X, Y or Z axis + encoder, INS aided by magnetometer (or baro); GNSS lost after 60 s.
 
 Run from python/:  python examples/example_rotating_imu.py [--imu industrial] [--rate 36]
 GNSS is available only during the first `--gnss-until` seconds (initial calibration), then it is
-lost until the end. Compared: IMU only (pure INS after GNSS loss) vs IMU + baro, for an IMU rotating
+lost until the end. Compared: IMU only (pure INS after GNSS loss) vs IMU + magnetometer
+(default; --aid baro / both for barometer), for an IMU rotating
 about each selected vehicle axis and, as a reference, a fixed (non-rotating) IMU.
 Vehicle roll/pitch/yaw are computed from the INS sensor attitude and the encoder angle.
 """
@@ -18,7 +19,7 @@ from pynavego.attitude import wrap_angle  # noqa: E402
 from pynavego.fusion import initial_state, run_fusion  # noqa: E402
 from pynavego.metrics import nav_errors, rmse  # noqa: E402
 from pynavego.sim import (generate_trajectory, rotate_trajectory, rotation_angle,  # noqa: E402
-                          simulate_baro, simulate_encoder, simulate_gnss, simulate_imu,
+                          simulate_baro, simulate_encoder, simulate_gnss, simulate_imu, simulate_mag,
                           vehicle_attitude)
 
 
@@ -29,6 +30,7 @@ def main():
     ap.add_argument("--gnss-until", type=float, default=60.0)
     ap.add_argument("--rate", type=float, default=36.0, help="turntable rate (deg/s)")
     ap.add_argument("--mode", default="continuous", choices=["continuous", "alternate"])
+    ap.add_argument("--aid", default="mag", choices=["mag", "baro", "both"])
     ap.add_argument("--axes", default="xyz", help="rotation axes to simulate, e.g. xyz or x")
     ap.add_argument("--encoder-bits", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
@@ -50,7 +52,10 @@ def main():
     for mount, (sref, th, ax) in mounts.items():
         imu, _ = simulate_imu(sref, a.imu, seed=a.seed)            # same error seed for both
         init = initial_state(sref)
-        for aid, kw in (("IMU only", {}), ("IMU + Baro", dict(baro=baro))):
+        mag = simulate_mag(sref, seed=5)       # magnetometer rides on the (rotating) IMU
+        aid_kw = {"mag": ("IMU + Mag", dict(mag=mag)), "baro": ("IMU + Baro", dict(baro=baro)),
+                  "both": ("IMU+Mag+Baro", dict(mag=mag, baro=baro))}[a.aid]
+        for aid, kw in (("IMU only", {}), aid_kw):
             res = run_fusion(imu, init, gnss=gnss, **kw)
             err = nav_errors(res, ref)                              # position/velocity
             att = wrap_angle(vehicle_attitude(res.euler, th, ax) - ref.euler)
@@ -65,13 +70,13 @@ def main():
 
     print(f"IMU {a.imu}, {a.duration:.0f} s, GNSS lost from t = {a.gnss_until:.0f} s to the end, "
           f"turntable {a.mode} {a.rate:.0f} deg/s about axes {a.axes.upper()}, encoder {a.encoder_bits} bit")
-    hdr = (f"| {'IMU mount':<9}| {'Aiding':<11}| {'Hor. drift end (m)':>18} | {'Hor. max (m)':>12} "
+    hdr = (f"| {'IMU mount':<9}| {'Aiding':<13}| {'Hor. drift end (m)':>18} | {'Hor. max (m)':>12} "
            f"| {'Hor. RMSE (m)':>13} | {'Hor. drift (m/min)':>18} | {'Alt. err end (m)':>16} "
            f"| {'Alt. RMSE (m)':>13} | {'Roll/Pitch/Yaw RMSE (deg)':>27} |")
     print(hdr)
     print("|" + "|".join("-" * (len(c)) for c in hdr.split("|")[1:-1]) + "|")
     for r in rows:
-        print(f"| {r['mount']:<9}| {r['aid']:<11}| {r['hor_end']:>18.1f} | {r['hor_max']:>12.1f} "
+        print(f"| {r['mount']:<9}| {r['aid']:<13}| {r['hor_end']:>18.1f} | {r['hor_max']:>12.1f} "
               f"| {r['hor_rmse']:>13.1f} | {r['hor_rate']:>18.1f} | {r['h_end']:>16.2f} "
               f"| {r['h_rmse']:>13.2f} | {'%.3f / %.3f / %.3f' % tuple(r['att']):>27} |")
     print("(all error statistics are computed over the GNSS outage only)")
@@ -84,15 +89,16 @@ def main():
 
     fig, ax = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
     for name, (err, att) in curves.items():
-        ls = "-" if name.endswith("Baro") else "--"
+        ls = "--" if name.endswith("IMU only") else "-"
         ax[0].plot(ref.t, err["horizontal"], ls, label=name)
         ax[1].plot(ref.t, err["h"], ls, label=name)
-        if name.endswith("Baro"):
+        if not name.endswith("IMU only"):
             ax[2].plot(ref.t, np.rad2deg(att[:, 2]), label=name + " yaw")
     ax[0].set_ylabel("horizontal error (m)")
     ax[0].set_yscale("log")
     ax[1].set_ylabel("altitude error (m)")
     ax[1].set_yscale("symlog", linthresh=10)
+    ax[2].set_ylim(-3, 3)
     ax[2].set_ylabel("vehicle attitude err (deg)")
     ax[3].plot(ref.t, np.rad2deg(wrap_angle(enc.theta)), lw=0.5)
     ax[3].set_ylabel("encoder angle (deg)")
