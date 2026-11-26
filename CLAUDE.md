@@ -46,3 +46,7 @@ Everything is passed as structs, documented in each function's header comment:
 ## Contributing
 
 Branches: `master` = stable releases, `develop` = integration branch for new features. Contribution workflow is described in `doc/navego-contribution-workflow.md`. New source files carry the LGPL header comment used by existing files.
+
+## Python port (`python/`)
+
+`python/pynavego` is a standalone Python package (numpy only; matplotlib for plots) that re-implements INS mechanization, IMU/GNSS simulation and a 16-state error-state EKF, adding barometric-altitude aiding with a baro-bias state. Run `cd python && pytest -q` and `python examples/example_ins_baro.py`. The IMU generator (`sim/imu.py: true_imu_from_trajectory`) exactly inverts `ins.py: ins_step`, so if you change the mechanization discretization, change both (the perfect-IMU test enforces this).

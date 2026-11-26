@@ -1,0 +1,62 @@
+import os
+import sys
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from pynavego.attitude import dcm2euler, dcm2rotvec, euler2dcm, rotvec2dcm  # noqa: E402
+from pynavego.earth import gravity_magnitude  # noqa: E402
+from pynavego.fusion import initial_state, run_fusion  # noqa: E402
+from pynavego.ins import ins_step  # noqa: E402
+from pynavego.metrics import nav_errors, rmse  # noqa: E402
+from pynavego.sim import (generate_trajectory, simulate_baro, simulate_gnss,  # noqa: E402
+                          simulate_imu, true_imu_from_trajectory)
+
+
+@pytest.fixture(scope="module")
+def ref():
+    return generate_trajectory(duration=120.0)
+
+
+def test_gravity():
+    assert gravity_magnitude(0.0, 0.0) == pytest.approx(9.7803, abs=1e-3)
+    assert gravity_magnitude(np.pi / 2, 0.0) == pytest.approx(9.8322, abs=1e-3)
+
+
+def test_attitude_roundtrip():
+    e = np.array([0.3, -0.2, 2.5])
+    assert np.allclose(dcm2euler(euler2dcm(*e)), e)
+    r = np.array([0.1, -0.4, 0.25])
+    assert np.allclose(dcm2rotvec(rotvec2dcm(r)), r)
+
+
+def test_perfect_imu_reproduces_trajectory(ref):
+    imu = true_imu_from_trajectory(ref)
+    s = initial_state(ref, att_err_deg=(0, 0, 0))
+    for k in range(len(ref.t) - 1):
+        s, _ = ins_step(s, imu.wb[k], imu.fb[k], ref.t[k + 1] - ref.t[k])
+    assert abs(s.h - ref.h[-1]) < 1e-6
+    assert abs(s.lat - ref.lat[-1]) * 6.4e6 < 1e-6
+    assert np.allclose(s.C_nb, ref.C_nb[-1], atol=1e-9)
+
+
+def test_baro_bounds_altitude(ref):
+    imu, _ = simulate_imu(ref, "industrial", seed=0)
+    baro = simulate_baro(ref, seed=1)
+    init = initial_state(ref)
+    e_ins = nav_errors(run_fusion(imu, init), ref)
+    e_baro = nav_errors(run_fusion(imu, init, baro=baro), ref)
+    # Baro-aided altitude stays within the (unobservable) baro bias + a few metres.
+    assert rmse(e_baro["h"]) < 8.0
+    assert rmse(e_baro["h"]) < rmse(e_ins["h"]) / 5
+
+
+def test_gnss_estimates_baro_bias(ref):
+    imu, _ = simulate_imu(ref, "industrial", seed=0)
+    baro = simulate_baro(ref, seed=1)
+    gnss = simulate_gnss(ref, seed=2)
+    res = run_fusion(imu, initial_state(ref), baro=baro, gnss=gnss)
+    assert abs(res.baro_bias[-1] - baro.data["bias_true"][-1]) < 1.5
+    assert rmse(nav_errors(res, ref)["h"]) < 2.0
