@@ -88,3 +88,26 @@ Từ kế gắn cùng IMU nên quay theo IMU. Bộ lọc dùng cả vector từ 
 | Cố định | IMU + Từ kế | 2769.2 | 2791.3 | 1344.2 | 307.7 | 313.21 | 137.56 | 0.161 / 0.103 / 0.110 |
 
 > Các bảng ở trên là một lần chạy với phiên bản bộ sinh số ngẫu nhiên cũ. Kết quả Monte Carlo cập nhật, lý thuyết và hình ảnh nằm trong tài liệu học tập `docs/index.html` (dựng bằng `docs/make_figures.py`, `docs/monte_carlo.py`, `docs/build_doc.py`).
+
+## Cảm biến khoảng cách LOS tới điểm xuất phát (thay baro và từ kế)
+
+`sim/los.py` mô phỏng khoảng cách thẳng (slant range) từ điểm đầu quỹ đạo tới xe: r = |p − p0| + nhiễu (σ = 0,5 m, 10 Hz). EKF dùng phép đo `z = r_INS − r_đo = uᵀ·δp`, trong đó u là vector đơn vị hướng LOS. Một điểm neo chỉ quan sát được thành phần sai số **dọc LOS**; thành phần vuông góc vẫn trôi.
+
+```bash
+python examples/example_los_range.py --mc 12
+```
+
+Kết quả Monte Carlo 12 lần (trung vị; IMU industrial; GNSS chỉ có trong 60 s đầu; thống kê trong lúc mất GNSS):
+
+| IMU | Hỗ trợ | RMSE ngang (m) | Ngang max (m) | Trôi cuối (m) | RMSE dọc LOS (m) | RMSE vuông góc LOS (m) | RMSE khoảng cách (m) | RMSE độ cao (m) | Nghiêng (°) | Yaw (°) | p10–p90 ngang (m) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Quay X | Chỉ IMU | 1232 | 3266 | 3266 | 216.5 | 1148 | 592.16 | 22.2 | 0.297 | 0.190 | 783–4673 |
+| Quay X | IMU + LOS | 41 | 111 | 56 | 0.3 | 41 | 0.11 | 6.8 | 0.157 | 0.159 | 26–56 |
+| Quay Y | Chỉ IMU | 4561 | 11874 | 11874 | 4555.0 | 240 | 2577.36 | 52.7 | 0.752 | 0.182 | 1735–8003 |
+| Quay Y | IMU + LOS | 107 | 230 | 214 | 1.2 | 107 | 0.11 | 7.3 | 0.065 | 0.491 | 39–300 |
+| Quay Z | Chỉ IMU | 710 | 1621 | 1621 | 482.4 | 472 | 496.66 | 71.6 | 0.111 | 0.941 | 545–1262 |
+| Quay Z | IMU + LOS | 62 | 141 | 104 | 1.4 | 62 | 0.10 | 61.4 | 0.049 | 0.455 | 28–107 |
+| Cố định | Chỉ IMU | 5027 | 13206 | 13206 | 1559.7 | 513 | 1817.75 | 225.8 | 0.822 | 1.039 | 628–8386 |
+| Cố định | IMU + LOS | 200 | 395 | 289 | 7.2 | 200 | 0.12 | 169.6 | 0.183 | 1.358 | 47–383 |
+
+![LOS](docs/figures/f12_los.png)

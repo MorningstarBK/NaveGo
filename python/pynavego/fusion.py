@@ -78,7 +78,7 @@ def _F_matrix(s, f_n, tau_g, tau_a, tau_b):
     return F
 
 
-def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None):
+def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None, los=None):
     """Run the filter over all IMU samples.
 
     imu:  sim.ImuData (with .err SI parameters used for tuning)
@@ -86,6 +86,7 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None):
     baro: SensorData with data['h'] (optional)
     gnss: SensorData with lat/lon/h/vel (optional)
     mag:  SensorData with data['m'] (N,3) sensor-frame field (uT), params['m_n'] (optional)
+    los:  SensorData with data['r'] slant range to params['anchor'] (lat, lon, h) (optional)
     """
     cfg = cfg or FilterConfig()
     e = imu.err
@@ -125,7 +126,7 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None):
         out_P[k] = np.diag(P)
 
     record(0)
-    jb = jg = jm = 0
+    jb = jg = jm = jl = 0
     for k in range(N - 1):
         dt = t[k + 1] - t[k]
         s, f_n = ins_step(s, imu.wb[k] - gb, imu.fb[k] - ab, dt)
@@ -161,6 +162,21 @@ def run_fusion(imu, init, baro=None, gnss=None, cfg=None, mag=None):
                 for i in range(3):
                     H_rows.append(Hm[i]); z.append(zm[i]); R.append(mag_noise**2)
                 jm += 1
+
+        if los is not None:
+            while jl < len(los.t) and los.t[jl] < tk - cfg.eps:
+                jl += 1
+            if jl < len(los.t) and abs(los.t[jl] - tk) <= cfg.eps:
+                lat0, lon0, h0 = los.params["anchor"]
+                R0M, R0N = radius(lat0)
+                p = np.array([(s.lat - lat0) * (R0M + h0), (s.lon - lon0) * (R0N + h0) * np.cos(lat0),
+                              -(s.h - h0)])
+                r = np.linalg.norm(p)
+                if r > los.params.get("min_range", 5.0):
+                    # z = r_ins - r_meas = u . dp   (u = unit LOS vector, NED)
+                    Hl = np.zeros(NX); Hl[6:9] = p / r
+                    H_rows.append(Hl); z.append(r - los.data["r"][jl]); R.append(los.params["noise_std"] ** 2)
+                jl += 1
 
         if gnss is not None:
             while jg < len(gnss.t) and gnss.t[jg] < tk - cfg.eps:

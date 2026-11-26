@@ -89,3 +89,14 @@ def test_mag_bounds_heading(ref):
     y_ins = yaw(run_fusion(imu, init, gnss=gnss))
     y_mag = yaw(run_fusion(imu, init, gnss=gnss, mag=simulate_mag(ref)))
     assert y_mag < np.deg2rad(1.0) and y_mag < y_ins
+
+
+def test_los_range_reduces_drift(ref):
+    from pynavego.sim import simulate_los
+    imu, _ = simulate_imu(ref, "industrial", seed=0)
+    gnss = simulate_gnss(ref, outages=[(40.0, 1e9)], seed=2)
+    init = initial_state(ref)
+    los = simulate_los(ref)
+    e0 = nav_errors(run_fusion(imu, init, gnss=gnss), ref)
+    e1 = nav_errors(run_fusion(imu, init, gnss=gnss, los=los), ref)
+    assert rmse(e1["horizontal"]) < rmse(e0["horizontal"])

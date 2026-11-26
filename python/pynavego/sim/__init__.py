@@ -16,3 +16,6 @@ __all__ += ["EncoderData", "rot_axis", "rot_x", "rot_y", "rot_z", "rotate_trajec
 from .mag import MAG_PRESET, earth_field_ned, simulate_mag  # noqa: E402
 
 __all__ += ["MAG_PRESET", "earth_field_ned", "simulate_mag"]
+from .los import LOS_PRESET, ned_from_anchor, simulate_los  # noqa: E402
+
+__all__ += ["LOS_PRESET", "ned_from_anchor", "simulate_los"]
