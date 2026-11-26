@@ -60,3 +60,19 @@ def test_gnss_estimates_baro_bias(ref):
     res = run_fusion(imu, initial_state(ref), baro=baro, gnss=gnss)
     assert abs(res.baro_bias[-1] - baro.data["bias_true"][-1]) < 1.5
     assert rmse(nav_errors(res, ref)["h"]) < 2.0
+
+
+def test_encoder_recovers_vehicle_attitude(ref):
+    from pynavego.attitude import wrap_angle
+    from pynavego.sim import rotate_trajectory, rotation_angle, simulate_encoder, vehicle_attitude
+    theta = rotation_angle(ref.t, 36.0)
+    sref = rotate_trajectory(ref, theta)
+    imu = true_imu_from_trajectory(sref)
+    # gyro X sees the turntable rate on top of vehicle motion
+    assert np.mean(imu.wb[:-1, 0]) == pytest.approx(np.deg2rad(36.0), abs=0.01)
+    s = initial_state(sref, att_err_deg=(0, 0, 0))
+    for k in range(len(ref.t) - 1):
+        s, _ = ins_step(s, imu.wb[k], imu.fb[k], 0.01)
+    enc = simulate_encoder(ref.t, theta)
+    att = vehicle_attitude(np.array([dcm2euler(s.C_nb)]), enc.theta[-1:])
+    assert np.all(np.abs(wrap_angle(att[0] - ref.euler[-1])) < np.deg2rad(0.01))
