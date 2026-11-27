@@ -70,9 +70,10 @@ ol li,ul li{margin-bottom:.4em;max-width:72ch}
 <div>
 <h1>Định vị quán tính với IMU quay, baro và từ kế</h1>
 <p class="lead">Khi mất GNSS suốt 9 phút, IMU <b>quay quanh trục nằm ngang (X hoặc Y)</b> kết hợp <b>cả từ kế lẫn baro</b> giữ sai số ngang ở mức trung vị khoảng <b>133 m RMSE</b>. Con số đó nhỏ hơn khoảng 38 lần so với IMU cố định không hỗ trợ. Mỗi thành phần chặn một nguồn trôi riêng: phép quay triệt tiêu bias ở hai trục vuông góc với trục quay, từ kế khóa hướng, còn baro khóa kênh đứng và giúp quan sát góc nghiêng.</p>
+<p class="lead">Thay baro và từ kế bằng <b>một cảm biến đo khoảng cách LOS tới điểm xuất phát</b> (<a href="#los">mục 9</a>), IMU quay X đạt trung vị <b>41 m</b>. Sai số dọc LOS gần như bằng 0, phần còn lại nằm hoàn toàn ở hướng vuông góc LOS.</p>
 </div>
 <div class="kpis">
-<div class="kpi"><b>133 m</b><span>RMSE ngang trung vị, Quay Y + từ kế + baro</span></div><div class="kpi"><b>5.027 m</b><span>RMSE ngang trung vị, IMU cố định, không hỗ trợ</span></div><div class="kpi"><b>0,8 m</b><span>RMSE độ cao khi có baro</span></div><div class="kpi"><b>0,04°</b><span>RMSE yaw khi có từ kế</span></div>
+<div class="kpi"><b>133 m</b><span>RMSE ngang trung vị, Quay Y + từ kế + baro</span></div><div class="kpi"><b>5.027 m</b><span>RMSE ngang trung vị, IMU cố định, không hỗ trợ</span></div><div class="kpi"><b>0,8 m</b><span>RMSE độ cao khi có baro</span></div><div class="kpi"><b>0,04°</b><span>RMSE yaw khi có từ kế</span></div><div class="kpi"><b>41 m</b><span>RMSE ngang trung vị, Quay X + LOS (không baro, không từ kế)</span></div>
 </div>
 </div>
 
@@ -94,6 +95,7 @@ ol li,ul li{margin-bottom:.4em;max-width:72ch}
 <li><a href="#ket-hop">Vì sao kết hợp lại cho độ trôi thấp</a></li>
 <li><a href="#ket-qua">Kết quả mô phỏng: hình và bảng</a></li>
 <li><a href="#uoc-luong">Các sai số cảm biến được ước lượng thế nào</a></li>
+<li><a href="#los">Cảm biến khoảng cách LOS tới điểm xuất phát</a></li>
 <li><a href="#han-che">Hạn chế, bài tập và cách chạy lại</a></li>
 </ol>
 
@@ -220,7 +222,70 @@ ol li,ul li{margin-bottom:.4em;max-width:72ch}
 <figure><img src="figures/f7_accel_bias.png" alt="Ước lượng bias gia tốc kế"><figcaption>Hình 7. Bias gia tốc kế. Với IMU cố định, bias trục Z (đứng) hội tụ tốt nhờ GNSS và baro. Bias trục Y lại hội tụ sai khoảng 1,5 mg: trên mặt phẳng ngang, bias này và góc nghiêng roll tạo cùng một dấu vết (g·φ ≈ b), nên bộ lọc không phân biệt được. Đây là nguồn trôi chính của IMU cố định. Với IMU quay X, bias Y và Z ước lượng chưa đúng, nhưng chúng đã bị điều chế nên không gây trôi.</figcaption></figure>
 <figure><img src="figures/f8_baro_mag_bias.png" alt="Bias baro và từ kế"><figcaption>Hình 8. Trái: bias baro hội tụ trong lúc có GNSS, sau đó giữ nguyên vì không còn quan sát được. Phần bias trôi thêm (Gauss-Markov σ = 1 m) chính là sai số độ cao còn lại. Phải: bias hard-iron của từ kế hội tụ trong vài giây nhờ phép quay của IMU và giữ đúng suốt hành trình.</figcaption></figure>
 
-<h2 id="han-che">9. Hạn chế, bài tập và cách chạy lại</h2>
+<h2 id="los">9. Thay baro và từ kế bằng cảm biến khoảng cách LOS</h2>
+<p>Cấu hình mới không còn baro hay từ kế. Thay vào đó là một cảm biến đo <b>khoảng cách đường thẳng (line of sight) từ điểm xuất phát p<sub>0</sub> tới xe</b>, ví dụ một trạm đo xa đặt tại điểm đầu. Cảm biến có nhiễu σ = 0,5 m, tần số 10 Hz, mô phỏng trong <code>sim/los.py</code>. Mọi điều kiện khác giữ nguyên: GNSS chỉ có trong 60 s đầu, IMU industrial, bàn xoay 36°/s.</p>
+<div class="two">
+<div>
+<h3 style="margin-top:0">Mô hình đo</h3>
+<div class="eq">r = |p − p<sub>0</sub>| + n &nbsp;&nbsp; u = (p − p<sub>0</sub>) / r<br>
+z = r<sub>INS</sub> − r<sub>đo</sub> ≈ u<sup>T</sup> δp − n &nbsp;&nbsp; H = [ 0 &nbsp;0 &nbsp;u<sup>T</sup> &nbsp;0 … 0 ]</div>
+<p>Phép đo chỉ có <b>một hàng</b> và chỉ chiếu sai số vị trí lên hướng u. Mọi sai số nằm trên mặt cầu bán kính r quanh p<sub>0</sub> đều cho cùng một khoảng cách, nên <b>tại một thời điểm</b>, sai số vuông góc LOS không quan sát được (hình bên). Bộ lọc tránh cập nhật khi r &lt; 5 m vì lúc đó u không xác định.</p>
+<h3>Quan sát được nhờ chuyển động</h3>
+<p>Lấy đạo hàm của phép đo theo thời gian:</p>
+<div class="eq">d/dt (u<sup>T</sup>δp) = u<sup>T</sup>δv + u̇<sup>T</sup>δp, &nbsp;&nbsp; |u̇| = v<sub>⊥</sub> / r</div>
+<ul>
+<li>Vận tốc dọc LOS trở nên quan sát được. Qua δv̇ = f×φ + Cδb<sub>a</sub>, góc nghiêng và bias gia tốc theo hướng LOS cũng quan sát được. Vì vậy góc nghiêng giảm khoảng 2–12 lần (Bảng 3).</li>
+<li>Sai số vuông góc chỉ lộ ra khi <b>hướng LOS quay</b> (u̇ ≠ 0). Tốc độ quay v<sub>⊥</sub>/r giảm dần khi xe đi xa: ở r = 5 km, xe chạy 15 m/s cắt ngang LOS cũng chỉ làm u quay 0,17°/s. Quỹ đạo trong bài đi gần như thẳng ra xa điểm neo, nên thông tin vuông góc rất yếu. Đây là hiện tượng suy giảm hình học (GDOP) với một trạm.</li>
+<li><b>Độ cao</b> có độ nhạy u<sub>D</sub> = −Δh/r. Với Δh ≈ 50 m ở r ≈ 5 km, u<sub>D</sub> ≈ 0,01, tức yếu hơn khoảng 100 lần so với chiều ngang. Kênh đứng vì vậy vẫn gần như tự do trôi.</li>
+</ul>
+</div>
+<div>
+<figure style="margin-top:0"><svg viewBox="0 0 420 330" style="width:100%;height:auto;display:block" role="img" aria-label="Hình học LOS">
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14161a"/></marker></defs>
+<circle cx="70" cy="270" r="250" fill="none" stroke="#7b2cbf" stroke-width="1.5" stroke-dasharray="5 5"/>
+<path d="M70,270 L300,173" stroke="#14161a" stroke-width="1.5" marker-end="url(#ah)"/>
+<polygon points="70,256 74,266 85,266 76,273 80,284 70,277 60,284 64,273 55,266 66,266" fill="#d62728"/>
+<text x="62" y="304" font-size="14" fill="#14161a">p₀ (điểm neo)</text>
+<circle cx="300" cy="173" r="6" fill="#14161a"/><text x="250" y="160" font-size="14" fill="#14161a">vị trí thật</text>
+<path d="M300,173 L349,289" stroke="#7b2cbf" stroke-width="3"/>
+<path d="M300,173 L252,58" stroke="#7b2cbf" stroke-width="3"/>
+<circle cx="252" cy="58" r="5" fill="#7b2cbf"/><circle cx="349" cy="289" r="5" fill="#7b2cbf"/>
+<text x="262" y="48" font-size="13" fill="#7b2cbf">cùng khoảng cách r</text>
+<text x="300" y="312" font-size="13" fill="#7b2cbf">→ không phân biệt được</text>
+<path d="M300,173 L360,148" stroke="#2ca02c" stroke-width="3" marker-end="url(#ah)"/>
+<text x="318" y="130" font-size="13" fill="#2ca02c">δp dọc u: đo được</text>
+<text x="140" y="205" font-size="14" fill="#14161a">r = |p − p₀|</text>
+</svg>
+<figcaption>Hình 12. Một điểm neo chỉ đo được thành phần sai số dọc hướng u (xanh lá). Các vị trí trên cung tròn (tím) cho cùng khoảng cách nên không phân biệt được.</figcaption></figure>
+</div>
+</div>
+
+<h3>Bảng 3 – Monte Carlo IMU + LOS (12 lần, trung vị)</h3>
+<div class="scroll"><table><thead><tr><th>IMU</th><th>Hỗ trợ</th><th>RMSE ngang (m)</th><th>p10–p90 (m)</th><th>Ngang max (m)</th><th>Trôi cuối (m)</th><th>Dọc LOS (m)</th><th>Vuông góc LOS (m)</th><th>RMSE khoảng cách (m)</th><th>RMSE độ cao (m)</th><th>Nghiêng (°)</th><th>Yaw (°)</th></tr></thead><tbody><tr><td>Quay X</td><td>Chỉ IMU</td><td>1.232</td><td>783–4.673</td><td>3.266</td><td>3.266</td><td>216.5</td><td>1.148</td><td>592.16</td><td>22.2</td><td>0.297</td><td>0.190</td></tr><tr class="best"><td>Quay X</td><td>IMU + LOS</td><td>41</td><td>26–56</td><td>111</td><td>56</td><td>0.3</td><td>41</td><td>0.11</td><td>6.8</td><td>0.157</td><td>0.159</td></tr><tr><td>Quay Y</td><td>Chỉ IMU</td><td>4.561</td><td>1.735–8.003</td><td>11.874</td><td>11.874</td><td>4555.0</td><td>240</td><td>2577.36</td><td>52.7</td><td>0.752</td><td>0.182</td></tr><tr class="best"><td>Quay Y</td><td>IMU + LOS</td><td>107</td><td>39–300</td><td>230</td><td>214</td><td>1.2</td><td>107</td><td>0.11</td><td>7.3</td><td>0.065</td><td>0.491</td></tr><tr><td>Quay Z</td><td>Chỉ IMU</td><td>710</td><td>545–1.262</td><td>1.621</td><td>1.621</td><td>482.4</td><td>472</td><td>496.66</td><td>71.6</td><td>0.111</td><td>0.941</td></tr><tr class="best"><td>Quay Z</td><td>IMU + LOS</td><td>62</td><td>28–107</td><td>141</td><td>104</td><td>1.4</td><td>62</td><td>0.10</td><td>61.4</td><td>0.049</td><td>0.455</td></tr><tr><td>Cố định</td><td>Chỉ IMU</td><td>5.027</td><td>628–8.386</td><td>13.206</td><td>13.206</td><td>1559.7</td><td>513</td><td>1817.75</td><td>225.8</td><td>0.822</td><td>1.039</td></tr><tr class="best"><td>Cố định</td><td>IMU + LOS</td><td>200</td><td>47–383</td><td>395</td><td>289</td><td>7.2</td><td>200</td><td>0.12</td><td>169.6</td><td>0.183</td><td>1.358</td></tr></tbody></table></div>
+<p class="note">"Dọc LOS" và "vuông góc LOS" là sai số ngang chiếu lên hướng nhìn về điểm xuất phát và hướng vuông góc với nó. Thống kê tính trong lúc mất GNSS (60–600 s).</p>
+<figure><img src="figures/f12_los.png" alt="Kết quả LOS"><figcaption>Hình 13. Seed 0. Hàng trên: sai số ngang. Hàng giữa: sai số tách thành dọc LOS (nét liền) và vuông góc LOS (nét chấm). Với LOS (tím), nét liền nằm sát 0, còn sai số còn lại đều ở nét chấm. Hàng dưới: quỹ đạo ước lượng so với quỹ đạo thật; khi chỉ có IMU, quỹ đạo có thể lệch tới hàng chục km.</figcaption></figure>
+
+<h3>Vì sao IMU quay X kết hợp LOS cho kết quả tốt nhất</h3>
+<p>Sau khi có LOS, sai số chỉ còn ở hướng <b>vuông góc LOS</b>. Trong bài này xe đi gần như thẳng ra xa điểm neo, nên hướng vuông góc LOS gần trùng <b>hướng ngang của xe</b> (trục Y). Độ trôi còn lại vì thế do bias và góc nghiêng theo trục Y của xe quyết định, và phép quay quyết định trục đó có bị triệt tiêu hay không:</p>
+<div class="scroll"><table class="mat">
+<thead><tr><th>Cấu hình</th><th>Bias trục ngang Y của xe (≈ vuông góc LOS)</th><th>Yaw</th><th>RMSE ngang, IMU + LOS</th></tr></thead>
+<tbody>
+<tr><td>Quay X</td><td class="y">bị điều chế, triệt tiêu</td><td class="y">giữ được (bias đứng bị điều chế)</td><td><b>41 m</b></td></tr>
+<tr><td>Quay Z</td><td class="y">bị điều chế, triệt tiêu</td><td class="n">trôi (~0,46°)</td><td>62 m</td></tr>
+<tr><td>Quay Y</td><td class="n">nằm dọc trục quay, còn nguyên</td><td class="p">trung bình (~0,49°)</td><td>107 m</td></tr>
+<tr><td>Cố định</td><td class="n">còn nguyên</td><td class="n">trôi (~1,36°)</td><td>200 m</td></tr>
+</tbody></table></div>
+<p>LOS và phép quay quanh X bổ sung cho nhau: LOS khóa hướng dọc (gần trùng trục X của xe), còn phép quay triệt tiêu bias ở hai trục còn lại. Quay Y thì ngược lại: trục không bị triệt tiêu lại đúng là hướng LOS không quan sát được.</p>
+
+<h3>So sánh với cấu hình từ kế + baro</h3>
+<div class="scroll"><table><thead><tr><th>IMU</th><th>Chỉ IMU</th><th>Từ kế + Baro: ngang (m)</th><th>LOS: ngang (m)</th><th>Từ kế + Baro: độ cao (m)</th><th>LOS: độ cao (m)</th></tr></thead><tbody><tr><td>Quay X</td><td>1.232</td><td>140</td><td><b>41</b></td><td><b>0.8</b></td><td>6.8</td></tr><tr><td>Quay Y</td><td>4.561</td><td>133</td><td><b>107</b></td><td><b>0.8</b></td><td>7.3</td></tr><tr><td>Quay Z</td><td>710</td><td>244</td><td><b>62</b></td><td><b>0.9</b></td><td>61.4</td></tr><tr><td>Cố định</td><td>5.027</td><td>577</td><td><b>200</b></td><td><b>0.9</b></td><td>169.6</td></tr></tbody></table><p class="note">RMSE trung vị trong lúc mất GNSS. Hai bộ Monte Carlo dùng cùng seed cho IMU và GNSS.</p></div>
+<ul>
+<li><b>Chiều ngang:</b> LOS tốt hơn từ kế + baro ở mọi cấu hình IMU, vì nó đo trực tiếp vị trí (dù chỉ một chiều). Từ kế và baro chỉ hạn chế được nguyên nhân gây trôi (tư thế, kênh đứng).</li>
+<li><b>Độ cao:</b> LOS kém hơn nhiều so với baro. Với quay Z hoặc cố định, sai số độ cao còn hàng chục đến hàng trăm mét. Nếu cần độ cao, LOS + baro là phương án tự nhiên.</li>
+<li><b>Hạn chế của cảm biến LOS:</b> mô phỏng giả định luôn có tầm nhìn thẳng, không có đa đường, không có bias khoảng cách, và biết chính xác vị trí điểm neo. Kết quả cũng phụ thuộc quỹ đạo: xe chạy vòng quanh điểm neo sẽ cho hướng LOS quay nhiều hơn, và sai số vuông góc có thể nhỏ hơn. Trường hợp đó chưa được mô phỏng.</li>
+</ul>
+
+<h2 id="han-che">10. Hạn chế, bài tập và cách chạy lại</h2>
 <div class="two">
 <div>
 <h3 style="margin-top:0">Những gì mô hình chưa có</h3>
@@ -238,6 +303,8 @@ ol li,ul li{margin-bottom:.4em;max-width:72ch}
 <li>Tăng tốc độ quay lên 90°/s, hoặc giảm xuống 6°/s. Độ trôi thay đổi thế nào? (Gợi ý: chu kỳ quay so với thời gian trôi.)</li>
 <li>Đặt độ từ khuynh I = 70° (vùng gần cực) và quan sát σ yaw.</li>
 <li>Cho xe chạy thẳng, không rẽ: baro còn giúp ước lượng góc nghiêng không?</li>
+<li>Cho xe chạy vòng tròn quanh điểm neo LOS: sai số vuông góc LOS thay đổi thế nào? Thêm điểm neo thứ hai thì sao?</li>
+<li>Kết hợp LOS + baro (cần thêm vài dòng trong <code>example_los_range.py</code>).</li>
 </ol>
 </div>
 </div>
@@ -246,8 +313,9 @@ pip install -e ".[plot,test]"
 python docs/make_figures.py      # Hình 1–11 + docs/results.json (Bảng 2)
 python docs/monte_carlo.py 12    # docs/montecarlo.json (Bảng 1)
 python docs/build_doc.py         # dựng lại trang này
+python examples/example_los_range.py --mc 12 --json docs/los_montecarlo.json   # Bảng 3
 python examples/example_rotating_imu.py --aid both --axes xyz</pre>
-<p class="note">Mã nguồn: <code>python/pynavego</code> (cơ học INS, mô phỏng IMU/baro/từ kế/encoder/GNSS, EKF 19 trạng thái), học theo NaveGo (Gonzalez et al.). Tài liệu tham khảo: P. D. Groves, <i>Principles of GNSS, Inertial, and Multisensor Integrated Navigation Systems</i>, 2nd ed., 2013; D. Titterton &amp; J. Weston, <i>Strapdown Inertial Navigation Technology</i>, 2004.</p>
+<p class="note">Mã nguồn: <code>python/pynavego</code> (cơ học INS, mô phỏng IMU/baro/từ kế/LOS/encoder/GNSS, EKF 19 trạng thái), học theo NaveGo (Gonzalez et al.). Tài liệu tham khảo: P. D. Groves, <i>Principles of GNSS, Inertial, and Multisensor Integrated Navigation Systems</i>, 2nd ed., 2013; D. Titterton &amp; J. Weston, <i>Strapdown Inertial Navigation Technology</i>, 2004.</p>
 </div></div>
 
 <script>

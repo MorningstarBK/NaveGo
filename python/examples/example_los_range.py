@@ -74,6 +74,7 @@ def main():
     ap.add_argument("--mc", type=int, default=12, help="number of Monte Carlo seeds")
     ap.add_argument("--imu", default="industrial", choices=["tactical", "industrial", "consumer"])
     ap.add_argument("--los-std", type=float, default=0.5)
+    ap.add_argument("--json", default=None, help="save Monte Carlo results to this JSON file")
     ap.add_argument("--no-plot", action="store_true")
     ap.add_argument("--out", default="los_results.png")
     a = ap.parse_args()
@@ -81,6 +82,11 @@ def main():
     jobs = [(s, m, a.imu, a.los_std) for s in range(a.mc) for m in MOUNTS]
     with ProcessPoolExecutor() as ex:
         out = dict(ex.map(_job, jobs))
+    if a.json:
+        import json
+        data = {m: {aid: [out[(s, m, a.imu, a.los_std)][aid] for s in range(a.mc)] for aid in AIDS}
+                for m in MOUNTS}
+        json.dump(data, open(a.json, "w"), ensure_ascii=False)
     keys = [("hor_rmse", "RMSE ngang", 0), ("hor_max", "Ngang max", 0), ("hor_end", "Trôi cuối", 0),
             ("rad_rmse", "RMSE dọc LOS", 1), ("tan_rmse", "RMSE vuông góc LOS", 0),
             ("rng_rmse", "RMSE khoảng cách", 2), ("h_rmse", "RMSE độ cao", 1),

@@ -12,6 +12,10 @@ AIDS = ["none", "baro", "mag", "both"]
 LAB = {"none": "Chỉ IMU", "baro": "IMU + Baro", "mag": "IMU + Từ kế", "both": "IMU + Từ kế + Baro"}
 COL = {"none": "var(--none)", "baro": "var(--baro)", "mag": "var(--mag)", "both": "var(--both)"}
 NMC = len(mc["Quay X"]["none"])
+los = json.load(open(os.path.join(HERE, "los_montecarlo.json")))
+lmed = lambda m, a, k: float(np.median([d[k] for d in los[m][a]]))
+lpct = lambda m, a, k, q: float(np.percentile([d[k] for d in los[m][a]], q))
+LLAB = {"none": "Chỉ IMU", "los": "IMU + LOS"}
 
 
 def med(m, a, k):
@@ -48,6 +52,7 @@ kpis = [
     (f"{f0(fix_none)} m", "RMSE ngang trung vị, IMU cố định, không hỗ trợ"),
     (f"{med('Quay X', 'both', 'h_rmse'):.1f} m".replace(".", ","), "RMSE độ cao khi có baro"),
     (f"{med('Quay X', 'mag', 'yaw'):.2f}°".replace(".", ","), "RMSE yaw khi có từ kế"),
+    (f"{f0(lmed('Quay X', 'los', 'hor_rmse'))} m", "RMSE ngang trung vị, Quay X + LOS (không baro, không từ kế)"),
 ]
 kpi_html = "".join(f'<div class="kpi"><b>{a}</b><span>{b}</span></div>' for a, b in kpis)
 
@@ -79,6 +84,34 @@ def table_one():
     return h + "</tbody></table>"
 
 
+
+
+def table_los():
+    h = ("<table><thead><tr><th>IMU</th><th>Hỗ trợ</th><th>RMSE ngang (m)</th><th>p10–p90 (m)</th>"
+         "<th>Ngang max (m)</th><th>Trôi cuối (m)</th><th>Dọc LOS (m)</th><th>Vuông góc LOS (m)</th>"
+         "<th>RMSE khoảng cách (m)</th><th>RMSE độ cao (m)</th><th>Nghiêng (°)</th><th>Yaw (°)</th></tr></thead><tbody>")
+    for m in MOUNTS:
+        for a in ("none", "los"):
+            cls = ' class="best"' if a == "los" else ""
+            h += (f"<tr{cls}><td>{m}</td><td>{LLAB[a]}</td><td>{f0(lmed(m, a, 'hor_rmse'))}</td>"
+                  f"<td>{f0(lpct(m, a, 'hor_rmse', 10))}–{f0(lpct(m, a, 'hor_rmse', 90))}</td>"
+                  f"<td>{f0(lmed(m, a, 'hor_max'))}</td><td>{f0(lmed(m, a, 'hor_end'))}</td>"
+                  f"<td>{lmed(m, a, 'rad_rmse'):.1f}</td><td>{f0(lmed(m, a, 'tan_rmse'))}</td>"
+                  f"<td>{lmed(m, a, 'rng_rmse'):.2f}</td><td>{lmed(m, a, 'h_rmse'):.1f}</td>"
+                  f"<td>{lmed(m, a, 'tilt'):.3f}</td><td>{lmed(m, a, 'yaw'):.3f}</td></tr>")
+    return h + "</tbody></table>"
+
+
+def table_compare():
+    h = ("<table><thead><tr><th>IMU</th><th>Chỉ IMU</th><th>Từ kế + Baro: ngang (m)</th><th>LOS: ngang (m)</th>"
+         "<th>Từ kế + Baro: độ cao (m)</th><th>LOS: độ cao (m)</th></tr></thead><tbody>")
+    for m in MOUNTS:
+        h += (f"<tr><td>{m}</td><td>{f0(med(m, 'none', 'hor_rmse'))}</td><td>{f0(med(m, 'both', 'hor_rmse'))}</td>"
+              f"<td><b>{f0(lmed(m, 'los', 'hor_rmse'))}</b></td><td><b>{med(m, 'both', 'h_rmse'):.1f}</b></td>"
+              f"<td>{lmed(m, 'los', 'h_rmse'):.1f}</td></tr>")
+    return h + "</tbody></table><p class=\"note\">RMSE trung vị trong lúc mất GNSS. Hai bộ Monte Carlo dùng cùng seed cho IMU và GNSS.</p>"
+
+
 rep = {
     "{{BARS}}": "".join(bars), "{{KPIS}}": kpi_html, "{{NMC}}": str(NMC),
     "{{BEST}}": f0(best), "{{RATIO_FIX}}": f"{fix_none / best:.0f}",
@@ -89,6 +122,13 @@ rep = {
     "{{QX_BOTH}}": f0(med("Quay X", "both", "hor_rmse")), "{{QY_BOTH}}": f0(med("Quay Y", "both", "hor_rmse")),
     "{{QZ_NONE}}": f0(med("Quay Z", "none", "hor_rmse")), "{{QZ_BOTH}}": f0(med("Quay Z", "both", "hor_rmse")),
     "{{QZ_BARO}}": f0(med("Quay Z", "baro", "hor_rmse")),
+    "{{LOS_NMC}}": str(len(los["Quay X"]["los"])), "{{LOS_TABLE}}": table_los(),
+    "{{LOS_COMPARE}}": table_compare(),
+    "{{LOS_QX}}": f0(lmed("Quay X", "los", "hor_rmse")), "{{LOS_QY}}": f0(lmed("Quay Y", "los", "hor_rmse")),
+    "{{LOS_QZ}}": f0(lmed("Quay Z", "los", "hor_rmse")), "{{LOS_FIX}}": f0(lmed("Cố định", "los", "hor_rmse")),
+    "{{LOS_QZ_YAW}}": f"{lmed('Quay Z', 'los', 'yaw'):.2f}".replace(".", ","),
+    "{{LOS_QY_YAW}}": f"{lmed('Quay Y', 'los', 'yaw'):.2f}".replace(".", ","),
+    "{{LOS_FIX_YAW}}": f"{lmed('Cố định', 'los', 'yaw'):.2f}".replace(".", ","),
     "{{TABLE_MC}}": table_mc(), "{{TABLE_ONE}}": table_one(),
 }
 s = open(os.path.join(HERE, "template.html"), encoding="utf-8").read()
