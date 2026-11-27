@@ -25,12 +25,15 @@ def job(a):
 
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
+    if len(sys.argv) > 2:
+        GRADES = sys.argv[2].split(",")
+    tag = sys.argv[3] if len(sys.argv) > 3 else ""
     jobs = [(s, m, g) for g in GRADES for m in MOUNTS for s in range(n)]
     with ProcessPoolExecutor() as ex:
         out = dict(ex.map(job, jobs))
     data = {g: {m: {aid: [out[(s, m, g)][aid] for s in range(n)] for aid in ("none", "los")}
                 for m in MOUNTS} for g in GRADES}
-    json.dump(data, open(os.path.join(HERE, "grade_compare.json"), "w"), ensure_ascii=False)
+    json.dump(data, open(os.path.join(HERE, f"grade_compare{tag}.json"), "w"), ensure_ascii=False)
     med = lambda g, m, a, k: float(np.median([d[k] for d in data[g][m][a]]))
 
     print(f"Monte Carlo {n} seeds, median horizontal RMSE (m) during the GNSS outage")
@@ -63,5 +66,5 @@ if __name__ == "__main__":
     ax[0].set_ylabel("RMSE ngang (m)"); ax[0].set_title("Nhạt: chỉ IMU; đậm: IMU + LOS")
     ax[1].set_ylabel("Chỉ IMU / IMU + LOS (lần)"); ax[1].set_title("Mức cải thiện nhờ LOS")
     ax[0].legend(fontsize=8)
-    fig.tight_layout(); fig.savefig(os.path.join(HERE, "figures", "f14_grades.png"), dpi=110)
-    print("saved figures/f14_grades.png")
+    fig.tight_layout(); fig.savefig(os.path.join(HERE, "figures", f"f14_grades{tag}.png"), dpi=110)
+    print(f"saved figures/f14_grades{tag}.png")

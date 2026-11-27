@@ -19,6 +19,16 @@ IMU_PRESETS = {
     # ring-laser / high-end FOG class (e.g. ~0.003 deg/h, 25 ug)
     "navigation": dict(arw=0.002, vrw=0.0012, gb_sta=0.01, ab_sta=0.025, gb_dyn=0.003, ab_dyn=0.005,
                        gb_corr=3600.0, ab_corr=3600.0),
+    # Murata SCH16T-K30 datasheet Doc.No.14736 Rev.1, typical values (Tables 4 and 6).
+    # Per-axis [X, Y, Z]. gb_sta = gyro offset typ (XY 0.1 deg/s, Z 0.01 deg/s, over -40..110 C),
+    # ab_sta = accel offset typ 0.01 m/s^2 (~1.02 mg), bias instability 0.3 deg/h and 0.15 mm/s^2,
+    # ARW XY 0.015 / Z 0.025 deg/sqrt(h), VRW 30 (mm/s)/sqrt(h), sensitivity error typ 0.05 %.
+    # Correlation times are not in the datasheet (assumed 100 s).
+    "sch16t": dict(arw=[0.015, 0.015, 0.025], vrw=0.03, gb_sta=[360.0, 360.0, 36.0], ab_sta=0.01 / G0 * 1e3,
+                   gb_dyn=0.3, ab_dyn=0.15e-3 / G0 * 1e3, gb_corr=100.0, ab_corr=100.0, gsf=0.05, asf=0.05),
+    # Same sensor without scale-factor error (to isolate its effect under IMU rotation).
+    "sch16t_nosf": dict(arw=[0.015, 0.015, 0.025], vrw=0.03, gb_sta=[360.0, 360.0, 36.0], ab_sta=0.01 / G0 * 1e3,
+                        gb_dyn=0.3, ab_dyn=0.15e-3 / G0 * 1e3, gb_corr=100.0, ab_corr=100.0),
     "tactical": dict(arw=0.15, vrw=0.05, gb_sta=1.0, ab_sta=1.0, gb_dyn=0.5, ab_dyn=0.05,
                      gb_corr=300.0, ab_corr=300.0),
     "industrial": dict(arw=0.3, vrw=0.03, gb_sta=10.0, ab_sta=5.0, gb_dyn=6.25, ab_dyn=0.1,
@@ -30,7 +40,10 @@ IMU_PRESETS = {
 
 def imu_errors_si(spec):
     """Convert datasheet units to SI (rad/s/sqrt(Hz), m/s^2/sqrt(Hz), rad/s, m/s^2)."""
+    spec = {k: (np.asarray(v, float) if isinstance(v, (list, tuple)) else v) for k, v in spec.items()}
     return dict(
+        gsf=spec.get("gsf", 0.0) * 1e-2,      # sensitivity (scale-factor) error, % -> fraction
+        asf=spec.get("asf", 0.0) * 1e-2,
         arw=spec["arw"] * D2R / 60.0,
         vrw=spec["vrw"] / 60.0,
         gb_sta=spec["gb_sta"] * D2R / 3600.0,
@@ -97,8 +110,11 @@ def simulate_imu(ref, spec="industrial", seed=0):
     ab_sta = e["ab_sta"] * rng.choice([-1.0, 1.0], 3)
     gb_true = gb_sta + gauss_markov(N, e["gb_dyn"], e["gb_corr"], dt, rng)
     ab_true = ab_sta + gauss_markov(N, e["ab_dyn"], e["ab_corr"], dt, rng)
-    wb = true.wb + gb_true + e["arw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
-    fb = true.fb + ab_true + e["vrw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
+    gsf = e["gsf"] * rng.choice([-1.0, 1.0], 3)
+    asf = e["asf"] * rng.choice([-1.0, 1.0], 3)
+    e["gsf_vec"], e["asf_vec"] = gsf, asf
+    wb = true.wb * (1.0 + gsf) + gb_true + e["arw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
+    fb = true.fb * (1.0 + asf) + ab_true + e["vrw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
     e["gb_sta_vec"], e["ab_sta_vec"] = gb_sta, ab_sta
     e["gb_true"], e["ab_true"] = gb_true, ab_true      # total bias time series (sensor frame)
     return ImuData(ref.t.copy(), wb, fb, e), true

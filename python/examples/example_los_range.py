@@ -72,7 +72,7 @@ def _job(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mc", type=int, default=12, help="number of Monte Carlo seeds")
-    ap.add_argument("--imu", default="industrial", choices=["navigation", "tactical", "industrial", "consumer"])
+    ap.add_argument("--imu", default="industrial", choices=["navigation", "tactical", "industrial", "consumer", "sch16t", "sch16t_nosf"])
     ap.add_argument("--los-std", type=float, default=0.5)
     ap.add_argument("--json", default=None, help="save Monte Carlo results to this JSON file")
     ap.add_argument("--no-plot", action="store_true")
