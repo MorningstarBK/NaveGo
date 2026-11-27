@@ -1,0 +1,8 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.png
+!docs/figures/*.png
+mc.log
+fig.log
+los.log
