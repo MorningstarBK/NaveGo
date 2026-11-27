@@ -16,6 +16,9 @@ D2R = np.pi / 180.0
 # Datasheet-style units: arw deg/sqrt(h), vrw m/s/sqrt(h), gyro biases deg/h,
 # accel biases mg, correlation times s.  Values are representative, not exact datasheets.
 IMU_PRESETS = {
+    # ring-laser / high-end FOG class (e.g. ~0.003 deg/h, 25 ug)
+    "navigation": dict(arw=0.002, vrw=0.0012, gb_sta=0.01, ab_sta=0.025, gb_dyn=0.003, ab_dyn=0.005,
+                       gb_corr=3600.0, ab_corr=3600.0),
     "tactical": dict(arw=0.15, vrw=0.05, gb_sta=1.0, ab_sta=1.0, gb_dyn=0.5, ab_dyn=0.05,
                      gb_corr=300.0, ab_corr=300.0),
     "industrial": dict(arw=0.3, vrw=0.03, gb_sta=10.0, ab_sta=5.0, gb_dyn=6.25, ab_dyn=0.1,
