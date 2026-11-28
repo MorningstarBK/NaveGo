@@ -25,7 +25,7 @@ from pynavego.metrics import nav_errors, rmse  # noqa: E402
 from pynavego.sim import (ImuData, add_imu_errors, generate_trajectory, simulate_encoder,  # noqa: E402
                           simulate_gnss, simulate_los, true_imu_vectorized, vehicle_attitude)
 
-T, TG, FH, DEC, RATE = 600.0, 60.0, 500.0, 5, 36.0
+T, TG, FH, DEC, RATE = 600.0, 60.0, 400.0, 4, 36.0
 D2R = np.pi / 180
 # case: (lateral RMS deg, longitudinal RMS deg, once-per-rev amplitude deg, slip on)
 CASES = {
@@ -38,6 +38,7 @@ CASES = {
     "Trượt góc": (0, 0, 0, True),
     "Tổng hợp": (0.05, 0.05, 0.2, True),
 }
+EXTRA_CASES = {"Lắc ngang + dọc 0,5°": (0.5, 0.5, 0, False), "Lắc ngang + dọc 1°": (1.0, 1.0, 0, False)}
 # body axis indices perpendicular to the spin axis: (lateral wobble axis, longitudinal wobble axis)
 WOB_AXES = {"x": (2, 1), "z": (0, 1)}
 _REF = {}
@@ -77,7 +78,7 @@ def dcm2euler_vec(C):
 
 
 def build(seed, axis, case):
-    lat_rms, lon_rms, rev, slip_on = CASES[case]
+    lat_rms, lon_rms, rev, slip_on = {**CASES, **EXTRA_CASES}[case]
     ref = ref_high()
     n = len(ref.t); dt = 1 / FH
     rng = np.random.default_rng(700 + seed)
@@ -116,7 +117,7 @@ def build(seed, axis, case):
                      euler=sl(ref.euler), C_nb=sl(ref.C_nb))
     sref100 = replace(ref100, C_nb=Cs[idx], euler=dcm2euler_vec(Cs[idx]))
     true = ImuData(t, wb, fb, {})
-    extra = dict(alpha=alpha[idx], slip=slip[idx])
+    extra = dict(alpha=alpha[idx], slip=slip[idx], hi=hi, ref_hi=ref, sC_hi=Cs)
     return ref100, sref100, true, th_cmd[idx], extra
 
 
@@ -150,7 +151,7 @@ if __name__ == "__main__":
             for ax in ("x", "z") for c in CASES for aid in ("none", "los")}
     json.dump(data, open(os.path.join(HERE, "vibration.json"), "w"), ensure_ascii=False)
     med = lambda ax, c, aid, k: float(np.median([d[k] for d in data[f"{ax}|{c}|{aid}"]]))
-    print(f"IMU {grade}, Monte Carlo {n} seeds (median), 500 Hz motion -> 100 Hz IMU, GNSS until {TG:.0f} s")
+    print(f"IMU {grade}, Monte Carlo {n} seeds (median), 400 Hz motion -> 100 Hz IMU, GNSS until {TG:.0f} s")
     print("| Quay | Trường hợp | Ngang chỉ IMU (m) | Ngang IMU+LOS (m) | Độ cao chỉ IMU / +LOS (m) | Nghiêng xe chỉ IMU / +LOS (°) | Yaw xe chỉ IMU / +LOS (°) |")
     print("|---|---|---|---|---|---|---|")
     for ax in ("x", "z"):
