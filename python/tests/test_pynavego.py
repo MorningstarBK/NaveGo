@@ -100,3 +100,15 @@ def test_los_range_reduces_drift(ref):
     e0 = nav_errors(run_fusion(imu, init, gnss=gnss), ref)
     e1 = nav_errors(run_fusion(imu, init, gnss=gnss, los=los), ref)
     assert rmse(e1["horizontal"]) < rmse(e0["horizontal"])
+
+
+def test_ukf_matches_ekf_small_errors(ref):
+    from pynavego.ukf import run_ukf
+    imu, _ = simulate_imu(ref, "industrial", seed=0)
+    baro = simulate_baro(ref, seed=1)
+    gnss = simulate_gnss(ref, outages=[(60.0, 1e9)], seed=2)
+    init = initial_state(ref)
+    e1 = nav_errors(run_fusion(imu, init, baro=baro, gnss=gnss), ref)
+    e2 = nav_errors(run_ukf(imu, init, baro=baro, gnss=gnss, alpha=0.5), ref)
+    assert rmse(e2["h"]) < 2.0
+    assert rmse(e2["horizontal"]) < 1.5 * rmse(e1["horizontal"]) + 5
