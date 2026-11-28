@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..attitude import dcm2rotvec
-from ..earth import earth_rate, gravity, radius, transport_rate
+from ..earth import OMEGA_IE, earth_rate, gravity, gravity_magnitude, radius, transport_rate
 
 G0 = 9.80665
 D2R = np.pi / 180.0
@@ -101,10 +101,17 @@ def simulate_imu(ref, spec="industrial", seed=0):
     """Return (ImuData with errors, true ImuData). `spec` is a preset name or a datasheet dict."""
     if isinstance(spec, str):
         spec = IMU_PRESETS[spec]
+    true = true_imu_from_trajectory(ref)
+    return add_imu_errors(true, spec, seed), true
+
+
+def add_imu_errors(true, spec="industrial", seed=0):
+    """Add the error model of `spec` to error-free ImuData `true` (any sample rate)."""
+    if isinstance(spec, str):
+        spec = IMU_PRESETS[spec]
     e = imu_errors_si(spec)
     rng = np.random.default_rng(seed)
-    true = true_imu_from_trajectory(ref)
-    N = len(ref.t); dt = ref.t[1] - ref.t[0]; fs = 1.0 / dt
+    N = len(true.t); dt = true.t[1] - true.t[0]; fs = 1.0 / dt
 
     gb_sta = e["gb_sta"] * rng.choice([-1.0, 1.0], 3)
     ab_sta = e["ab_sta"] * rng.choice([-1.0, 1.0], 3)
@@ -117,4 +124,26 @@ def simulate_imu(ref, spec="industrial", seed=0):
     fb = true.fb * (1.0 + asf) + ab_true + e["vrw"] * np.sqrt(fs) * rng.normal(size=(N, 3))
     e["gb_sta_vec"], e["ab_sta_vec"] = gb_sta, ab_sta
     e["gb_true"], e["ab_true"] = gb_true, ab_true      # total bias time series (sensor frame)
-    return ImuData(ref.t.copy(), wb, fb, e), true
+    return ImuData(true.t.copy(), wb, fb, e)
+
+
+def true_imu_vectorized(t, lat, h, vel, C_nb):
+    """Vectorized true_imu_from_trajectory for long high-rate trajectories (same discretization)."""
+    dt = t[1] - t[0]
+    C0, C1 = C_nb[:-1], C_nb[1:]
+    R = np.einsum("kji,kjl->kil", C0, C1)
+    v = np.stack((R[:, 2, 1] - R[:, 1, 2], R[:, 0, 2] - R[:, 2, 0], R[:, 1, 0] - R[:, 0, 1]), axis=1)
+    c = np.clip((np.trace(R, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0)
+    a = np.arccos(c)
+    k = np.where(a < 1e-8, 0.5, a / (2.0 * np.sin(np.maximum(a, 1e-12))))
+    rotv = v * k[:, None]
+    la, hh, v0 = lat[:-1], h[:-1], vel[:-1]
+    RM, RN = radius(la)
+    w_ie = OMEGA_IE * np.stack((np.cos(la), np.zeros_like(la), -np.sin(la)), axis=1)
+    w_en = np.stack((v0[:, 1] / (RN + hh), -v0[:, 0] / (RM + hh), -v0[:, 1] * np.tan(la) / (RN + hh)), axis=1)
+    wb = rotv / dt + np.einsum("kji,kj->ki", C0, w_ie + w_en)
+    g = np.zeros_like(v0); g[:, 2] = gravity_magnitude(la, hh)
+    f_n = (vel[1:] - v0) / dt - g + np.cross(2.0 * w_ie + w_en, v0)
+    fb = np.linalg.solve(0.5 * (C0 + C1), f_n[:, :, None])[:, :, 0]
+    wb = np.vstack((wb, wb[-1:])); fb = np.vstack((fb, fb[-1:]))
+    return ImuData(t.copy(), wb, fb, {})
