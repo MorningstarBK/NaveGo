@@ -53,9 +53,18 @@ def rotation_angle(t, rate_deg_s=36.0, mode="continuous", period=20.0):
     raise ValueError(mode)
 
 
-def rotate_trajectory(ref, theta, axis="x"):
-    """Sensor-frame trajectory: same position/velocity, attitude C_nb @ R_axis(theta)."""
-    C = np.einsum("kij,kjl->kil", ref.C_nb, np.array([rot_axis(axis, a) for a in theta]))
+def rotate_trajectory(ref, theta, axis="x", mount=None, axis_tilt=None):
+    """Sensor-frame trajectory: same position/velocity, attitude C_nb @ T @ R_axis(theta) @ M.
+
+    mount:     (3,) small angles (rad) of the IMU misalignment on the turntable (M = euler2dcm),
+               i.e. the IMU axes are not aligned with the motor/encoder axis.
+    axis_tilt: (3,) small angles (rad) of the turntable (motor) axis misalignment w.r.t. the
+               vehicle body (T = euler2dcm).
+    Both are unknown to the navigation software, which assumes C_bs = R_axis(theta).
+    """
+    M = euler2dcm(*mount) if mount is not None else np.eye(3)
+    T = euler2dcm(*axis_tilt) if axis_tilt is not None else np.eye(3)
+    C = np.einsum("kij,kjl->kil", ref.C_nb, np.array([T @ rot_axis(axis, a) @ M for a in theta]))
     euler = np.array([dcm2euler(c) for c in C])
     return replace(ref, C_nb=C, euler=euler)
 
